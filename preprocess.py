@@ -115,3 +115,11 @@ def run():
             # print(mapping)
             # exit(0)
         i += 1
+
+
+if __name__ == "__main__":
+    if not os.path.exists(output_root):
+        os.makedirs(output_root, exist_ok=True)
+    if not os.path.exists("./temp"):
+        os.makedirs("./temp", exist_ok=True)
+    run()

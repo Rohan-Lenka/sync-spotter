@@ -4,6 +4,15 @@ from trainer.trainer import Trainer
 from options.train_options import TrainOptions
 
 
+def get_val_opt():
+    val_opt = TrainOptions().parse(print_options=False)
+    val_opt.isTrain = False
+    val_opt.data_label = "val"
+    val_opt.real_list_path = "./datasets/val/0_real"
+    val_opt.fake_list_path = "./datasets/val/1_fake"
+    return val_opt
+
+
 if __name__ == "__main__":
     opt = TrainOptions().parse()
     val_opt = get_val_opt()
