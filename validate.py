@@ -1,10 +1,12 @@
 import argparse
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from data import AVLip
 import torch.utils.data
 from models import build_model
-from sklearn.metrics import average_precision_score, confusion_matrix, accuracy_score
+from sklearn.metrics import average_precision_score, confusion_matrix, accuracy_score, roc_curve, auc, precision_recall_curve
 
 
 def validate(model, loader, gpu_id):
@@ -20,16 +22,18 @@ def validate(model, loader, gpu_id):
             y_pred.extend(model(crops_tens, features)[0].sigmoid().flatten().tolist())
             y_true.extend(label.flatten().tolist())
     y_true = np.array(y_true)
-    y_pred = np.where(np.array(y_pred) >= 0.5, 1, 0)
+    y_pred_probs = np.array(y_pred)
+    y_pred_classes = np.where(y_pred_probs >= 0.5, 1, 0)
 
     # Get AP
-    ap = average_precision_score(y_true, y_pred)
-    cm = confusion_matrix(y_true, y_pred)
+    ap = average_precision_score(y_true, y_pred_probs)
+    cm = confusion_matrix(y_true, y_pred_classes)
     tp, fn, fp, tn = cm.ravel()
     fnr = fn / (fn + tp)
     fpr = fp / (fp + tn)
-    acc = accuracy_score(y_true, y_pred)
-    return ap, fpr, fnr, acc
+    acc = accuracy_score(y_true, y_pred_classes)
+    return ap, fpr, fnr, acc, y_true, y_pred_classes, y_pred_probs, cm
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -58,5 +62,42 @@ if __name__ == "__main__":
     loader = data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=opt.batch_size, shuffle=True
     )
-    ap, fpr, fnr, acc = validate(model, loader, gpu_id=[opt.gpu])
+    ap, fpr, fnr, acc, y_true, y_pred, y_pred_probs, cm = validate(model, loader, gpu_id=[opt.gpu])
     print(f"acc: {acc} ap: {ap} fpr: {fpr} fnr: {fnr}")
+
+    # --- Plotting Graphs ---
+    print("Generating validation graphs...")
+    plt.figure(figsize=(18, 5))
+
+    # 1. Confusion Matrix
+    plt.subplot(1, 3, 1)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
+
+    # 2. ROC Curve
+    fpr_roc, tpr_roc, _ = roc_curve(y_true, y_pred_probs)
+    roc_auc = auc(fpr_roc, tpr_roc)
+    plt.subplot(1, 3, 2)
+    plt.plot(fpr_roc, tpr_roc, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC)')
+    plt.legend(loc="lower right")
+
+    # 3. Precision-Recall Curve
+    precision, recall, _ = precision_recall_curve(y_true, y_pred_probs)
+    plt.subplot(1, 3, 3)
+    plt.plot(recall, precision, color='b', lw=2, label=f'AP = {ap:.2f}')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc="lower left")
+
+    plt.tight_layout()
+    plt.savefig('validation_graphs.png')
+    print("Graphs successfully saved to 'validation_graphs.png'.")
